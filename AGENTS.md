@@ -12,21 +12,42 @@
 
 ## Current state of `hannuo.html`
 
-Complete and playable (5 discs, **press and drag** the top disc onto another peg to move it;
+Complete and playable (5/6/7 discs, **press and drag** the top disc onto another peg to move it;
 there is no click-to-pick-up / click-to-drop — a plain click only shows the "只能移动最上面的圆盘"
 or "按住圆盘拖到另一根柱子上" hint. Pressing a disc that is not on top of its stack is refused).
-Verified via `node --check` plus a DOM-stub simulation (full 31-move solve, illegal
-moves, 3-miss game over, restart) and a headless-Chrome run of the same scenarios.
+Verified via `node --check` plus a DOM-stub simulation (full optimal solve at all three
+difficulties, illegal moves, 3-miss game over, restart) and a headless-Chrome run of the
+same scenarios.
+
+### Difficulty: 5 / 6 / 7 discs (added on request)
+
+`N` is a **`let`, not a `const`** — it starts at 5 (or `localStorage['hanoi-level']`) and is
+changed by `setLevel(n)`, wired to the `.lvl button[data-n]` toolbar buttons (styled by the
+`.lvl` / `.lvl button.on` CSS rules). `LEVELS=[5,6,7]`; `setLevel` ignores anything else.
+Switching difficulty calls `newGame()`, which rebuilds the board and (via `stopDemo()`)
+aborts any running demo.
+
+**Everything derived from `N` must stay parameterised** — this is the easy thing to break:
+
+- `wPct(i)` lerps the disc width from `W_OUT` (29%) down to `W_MIN` (8%), *not* the old
+  hard-coded `29 - i*(20/4)`, which went **negative** for N=7.
+- `build()` recomputes `STEP`/`DISC_H` as `min(6.6667, (STACK_TOP-BASE)/N)` so the tallest
+  stack always fits under the rod, and pushes it into the `--discH` CSS variable that `.disc`
+  reads (`height:var(--discH,6.6667%)`). For 5–7 discs the cap still wins, so nothing shrinks.
+- `build()` also sets `hueStep = min(62, 360/N)`; the old fixed `i*62+8` made disc 0 (8°) and
+  the last disc collide near red at N=7 (only 12° apart). The new step gives 62°/60°/51°.
+- `demoSpeed()` returns 450/340/260 ms so a 127-move N=7 demo doesn't take a full minute.
 
 ### "放弃 · 看解法" demo (added on request)
 
 The `#btnGiveUp` toolbar button first calls `newGame()` — so the demo **always replays the
 canonical solution from the standard start**, never from the player's current state — then
-animates `solve(N,0,2,1,[])` one step every `DEMO_STEP` (450ms) via `playDemo()`. While
+animates `solve(N,0,2,1,[])` one step every `demoSpeed()` ms via `playDemo()`. While
 `demo` is true the board is locked (`done=true`) and the button reads "停止演示"; clicking it
 again, or pressing "新的一局", aborts via `stopDemo()` (which also clears the pending
 `demoTimer`, so no queued step can leak in afterwards). When it finishes the board is left
-solved with `done` still true and the button reading "再看一遍".
+solved with `done` still true and the button reading "再看一遍" (`playDemo` nulls
+`demoTimer` there too).
 The demo moves discs through `stepMove()` (no legality check, no `miss`) and never calls
 `startTimer()`/`win()`, so it can neither start the clock nor write a `hanoi-best` record.
 
@@ -45,11 +66,12 @@ Game rules baked into the code — preserve them when editing:
   It must be created lazily inside a user gesture or Chrome blocks it.
 
 Geometry is percentage-based so the board scales with `#board` (design space
-680×360): `pegX=[16,50,84]` are peg-center %, `BASE=15.5556` / `STEP=6.6667` are
-disc bottom offsets in % of height, `wPct()` is disc width in % of width. The CSS
-`.rod` values (`bottom:15.5556%`, `height:69.4444%`) mirror the same numbers —
-**change them together**. Rod centers come from `.pg:nth-child(n){left:…}` (0/34/68%
-+ 32% width), so keep `pegX` and those `left` values in sync.
+680×360): `pegX=[16,50,84]` are peg-center %, `BASE=15.5556` is the bottom disc's
+offset and `STEP` is the per-disc offset (now derived from `N` in `build()`, capped
+at 6.6667), `wPct()` is disc width in % of width. The CSS `.rod` values
+(`bottom:15.5556%`, `height:69.4444%`) mirror `BASE`/`ROD_TOP` — **change them
+together**. Rod centers come from `.pg:nth-child(n){left:…}` (0/34/68% + 32% width),
+so keep `pegX` and those `left` values in sync.
 
 ## How to verify (there is no test suite)
 

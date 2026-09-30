@@ -24,6 +24,16 @@ h1{font-size:clamp(26px,4.2vh,44px);letter-spacing:.4em;text-indent:.4em;color:#
 .bar .stat{font-size:14px;color:#33416b;background:#ffffff;border:1px solid #bfcdee;
   border-radius:16px;padding:7px 16px;box-shadow:0 2px 6px rgba(50,80,150,.12)}
 .bar b{color:#1f5fd0;font-family:Cinzel,serif;font-size:17px}
+.lvl{display:flex;align-items:center;gap:2px;background:#ffffff;border:1px solid #bfcdee;
+  border-radius:16px;padding:4px 6px 4px 14px;box-shadow:0 2px 6px rgba(50,80,150,.12);
+  font-size:13px;color:#33416b}
+.lvl .lb{letter-spacing:.1em;margin-right:6px}
+.lvl button{font:inherit;font-size:13px;font-weight:700;color:#3b4f83;cursor:pointer;
+  min-width:30px;padding:3px 9px;border:0;border-radius:11px;background:transparent;
+  transition:background .15s ease,color .15s ease}
+.lvl button:hover{background:#e9effc}
+.lvl button.on{background:linear-gradient(180deg,#4a7bea,#2d55c9);color:#ffffff;
+  box-shadow:0 2px 6px rgba(40,70,160,.3)}
 .btn{font:inherit;font-size:14px;font-weight:700;letter-spacing:.08em;color:#ffffff;
   padding:8px 18px;border-radius:16px;cursor:pointer;
   background:linear-gradient(180deg,#4a7bea,#2d55c9);border:1px solid #24479f;
@@ -52,7 +62,7 @@ h1{font-size:clamp(26px,4.2vh,44px);letter-spacing:.4em;text-indent:.4em;color:#
 .pg.drop-ok .rod{box-shadow:0 0 0 3px rgba(35,170,95,.55), 0 0 26px rgba(35,170,95,.55)}
 .pg.drop-bad .rod{box-shadow:0 0 0 3px rgba(225,60,50,.55), 0 0 26px rgba(225,60,50,.5)}
 .discs{position:absolute;inset:0;z-index:20;pointer-events:none}
-.disc{position:absolute;height:6.6667%;border-radius:999px;pointer-events:auto;
+.disc{position:absolute;height:var(--discH,6.6667%);border-radius:999px;pointer-events:auto;
   touch-action:none;cursor:grab;user-select:none;-webkit-user-select:none;
   background:
     radial-gradient(140% 100% at 50% 8%, rgba(255,255,255,.65), transparent 45%),
@@ -78,6 +88,10 @@ h1{font-size:clamp(26px,4.2vh,44px);letter-spacing:.4em;text-indent:.4em;color:#
     <span class="stat">失误 <b id="miss" style="color:#d9483c">0</b>/3</span>
     <span class="stat">纪录 <b id="record">—</b></span>
     <button class="btn" id="btnNew">新的一局</button>
+    <span class="lvl">
+      <span class="lb">难度</span>
+      <button data-n="5">5</button><button data-n="6">6</button><button data-n="7">7</button>
+    </span>
     <button class="btn" id="btnGiveUp">放弃 · 看解法</button>
     <button class="btn" id="btnSound">🔊</button>
   </div>
@@ -92,7 +106,8 @@ h1{font-size:clamp(26px,4.2vh,44px);letter-spacing:.4em;text-indent:.4em;color:#
 
 <script>
 'use strict';
-const N=5;
+const LEVELS=[5,6,7];
+let N=5;                                     // 当前难度：可选 5 / 6 / 7 个圆盘
 const P=[[],[],[]];
 let discs=[];
 let moves=0, miss=0, running=false, done=false;
@@ -105,8 +120,14 @@ const $a=s=>Array.from(document.querySelectorAll(s));
 const discLayer=$('#discs');
 const board=$('#board');
 const pegX=[16,50,84];
-const BASE=15.5556, STEP=6.6667;
-const wPct=i=>(29-i*((29-9)/(N-1))).toFixed(2);
+const BASE=15.5556;
+const ROD_TOP=69.4444, STACK_TOP=64;         // 柱子高 / 最高盘顶边的上限（% 板高）
+let STEP=6.6667, DISC_H=6.6667;              // 底部间距 / 盘高，随难度在 build 里重算
+const W_OUT=29, W_MIN=8;                     // 最大盘宽 / 最小盘宽下限（% 板宽）
+const wPct=i=>{ const t=N>1?i/(N-1):0;       // 最大盘 29% 线性收窄到最小盘
+  return (W_OUT-t*(W_OUT-W_MIN)).toFixed(2); };
+const discH=()=>DISC_H.toFixed(4);
+let hueStep=62;                              // 配色步长，随盘数在 build 里调匀
 const ROMAN=['①','②','③'];
 let drag=null;
 
@@ -137,6 +158,12 @@ function markDrop(to){
 function clearDrop(){ $a('.pg').forEach(el=>{ el.classList.remove('drop-ok'); el.classList.remove('drop-bad'); }); }
 
 function build(){
+  STEP=Math.min(6.6667,(STACK_TOP-BASE)/N);  // 盘越多，间距越紧，保证整叠不超过杆顶
+  DISC_H=STEP;
+  // 色相步长取 360/N（5 盘时封顶 62），这样 5/6/7 盘相邻颜色的间隔都最大，
+  // 避免盘数变多后最大盘和最小盘撞成同一种红色系
+  hueStep=Math.min(62,360/N);
+  board.style.setProperty('--discH',discH()+'%');
   for(const a of P) a.length=0;
   discLayer.innerHTML='';
   discs=[];
@@ -145,8 +172,8 @@ function build(){
     d.className='disc';
     d.dataset.id=i;
     d.style.width=wPct(i)+'%';
-    d.style.setProperty('--c1',`hsl(${(i*62+8)%360},76%,58%)`);
-    d.style.setProperty('--c2',`hsl(${(i*62+8)%360},72%,40%)`);
+    d.style.setProperty('--c1',`hsl(${(i*hueStep+8)%360},76%,58%)`);
+    d.style.setProperty('--c2',`hsl(${(i*hueStep+8)%360},72%,40%)`);
     d.innerHTML='<i class="grab"></i>';
     d.addEventListener('pointerdown',onDown);
     discLayer.appendChild(d);
@@ -186,7 +213,8 @@ function beep(freq,dur,type){
 
 function showRecord(){
   const b=BEST[N];
-  $('#record').textContent=b?(b.m+' 步 / '+fmt(b.t*1000)):'—';
+  // 纪录按盘数分别保存，所以顺手标一下这是哪个难度
+  $('#record').textContent=b?(b.m+' 步 / '+fmt(b.t*1000)+' · '+N+'盘'):(N+'盘 暂无');
 }
 function gameOver(){
   done=true; stopTimer();
@@ -282,7 +310,8 @@ function newGame(){
 
 /* ---- 演示：自动走一遍最少步数解法 ---- */
 let demoTimer=null, demo=false;
-const DEMO_STEP=450;                         // 每步间隔（毫秒）
+// 每步间隔：5 盘按你选的 0.45 秒；盘数越多总步数涨得越快（2^N-1），适当提速免得干等
+const demoSpeed=()=>N<=5?450:(N===6?340:260);
 const giveUpBtn=$('#btnGiveUp');
 
 // 经典递归解法，得到最短的 2^N-1 步序列
@@ -311,7 +340,7 @@ function stopDemo(msg){
 function playDemo(seq,i){
   if(!demo) return;
   if(i>=seq.length){
-    demo=false; giveUpBtn.textContent='再看一遍';
+    demoTimer=null; demo=false; giveUpBtn.textContent='再看一遍';
     beep(784,0.12); setTimeout(()=>beep(988,0.12),130); setTimeout(()=>beep(1175,0.22),260);
     say(`演示结束：${seq.length} 步最少步数解法。点「新的一局」自己试试。`);
     return;
@@ -319,7 +348,7 @@ function playDemo(seq,i){
   const [f,t]=seq[i];
   stepMove(f,t);
   say(`演示中 ${i+1}/${seq.length}：第 ${ROMAN[f]} 根 → 第 ${ROMAN[t]} 根`);
-  demoTimer=setTimeout(()=>playDemo(seq,i+1),DEMO_STEP);
+  demoTimer=setTimeout(()=>playDemo(seq,i+1),demoSpeed());
 }
 function startDemo(){
   stopDemo();
@@ -345,6 +374,23 @@ $('#btnSound').addEventListener('click',function(){
   this.textContent=soundOn?'🔊':'🔇';
   if(soundOn) beep(660,0.07);
 });
+
+/* ---- 难度：5 / 6 / 7 个圆盘 ---- */
+const lvlBtns=$a('.lvl button');
+function markLevel(){
+  lvlBtns.forEach(b=>b.classList.toggle('on',+b.dataset.n===N));
+}
+function setLevel(n){
+  if(!LEVELS.includes(n)) return;
+  N=n;
+  try{ localStorage.setItem('hanoi-level',String(N)); }catch(e){}
+  markLevel();
+  newGame();                                 // newGame 内部会 stopDemo() 并重建盘面
+  say(`难度已切换为 ${N} 个圆盘（最少 ${Math.pow(2,N)-1} 步）。全部搬到第 ③ 根柱子。`);
+}
+lvlBtns.forEach(b=>b.addEventListener('click',()=>setLevel(+b.dataset.n)));
+try{ const s=+localStorage.getItem('hanoi-level'); if(LEVELS.includes(s)) N=s; }catch(e){}
+markLevel();
 build(); showRecord();
 </script>
 </body>
